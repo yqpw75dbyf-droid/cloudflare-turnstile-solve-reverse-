@@ -1,9 +1,9 @@
 'use strict';
-// solver_api.js — API Turnstile tương thích roblox_login.py (kiểu D3-vin api.py), backend = cf_solve.js (browserless).
+// solver_api.js — HTTP API for the Turnstile solver, backend = cf_solve.js (browserless).
 //   GET /turnstile?url=&sitekey=  → {errorId:0, taskId}
 //   GET /result?id=               → {status:'processing'} | {errorId:0, status:'ready', solution:{token}} | {errorId:1, errorDescription}
 // Mỗi task chạy `node cf_solve.js` riêng (jsdom sạch). Cần net_bridge_server.py (:8901).
-// usage: node solver_api.js [port=5091]   → python roblox_login.py --solver http://127.0.0.1:5091
+// usage: node solver_api.js [port=5091]
 const http = require('http');
 const path = require('path');
 const crypto = require('crypto');
