@@ -1,42 +1,46 @@
-# cf_turnstile_js — solver Cloudflare Turnstile không trình duyệt (bản đang chạy được)
+# cf_turnstile_js — browserless Cloudflare Turnstile solver
 
-Bản sao sạch của `cf_native/browserless`: chỉ gồm file cần để chạy. Đã kiểm trên thư mục này:
-6/7 lần `cf_solve.js` ra TOKEN (lần hỏng là CF bắt click), qua API 1/1 (2026-09-24).
+Solves Cloudflare Turnstile without a browser: the challenge page and Cloudflare's own orchestrate/VM run inside
+jsdom, and all network traffic goes through a curl_cffi bridge (Chrome TLS fingerprint, direct connection, no proxy).
+No Chrome is launched at solve time.
 
-Chạy bằng jsdom (không mở Chrome), mạng đi thẳng qua bridge curl_cffi (TLS giống Chrome, không proxy).
+Tested live on the Roblox login widget: most runs return a token, ~5–8 s per solve.
 
-## Cài
+## Install
 ```
 npm install                      # jsdom 29.1.1
 pip install -r requirements.txt  # flask, curl_cffi
 ```
 
-## Chạy
+## Run
 ```
 cd solver
-python net_bridge_server.py      # bridge :8901  (BRIDGE_PORT=... để đổi)
-node solver_api.js               # API :5091     (node solver_api.js <port>)
+python net_bridge_server.py      # bridge on :8901  (BRIDGE_PORT=... to change)
+node solver_api.js               # API on :5091     (node solver_api.js <port>)
 ```
-Giải thử 1 lần không qua API: `node cf_solve.js` → in `*** TOKEN ***` + token.
+Single solve without the API: `node cf_solve.js` → prints `*** TOKEN ***` followed by the token.
 
-Dùng với Roblox login:
+With the Roblox login script:
 ```
 python roblox_login.py --solver http://127.0.0.1:5091
 ```
-API: `GET /turnstile?url=&sitekey=` → `{taskId}`; `GET /result?id=` → `{status:"processing"}` | `{status:"ready", solution:{token}}`.
-Mỗi lần giải ~5–8 giây, API chạy tuần tự từng task (bridge dùng 1 phiên curl_cffi chung).
 
-## File
-| File | Vai trò |
+API:
+- `GET /turnstile?url=&sitekey=` → `{errorId: 0, taskId}`
+- `GET /result?id=` → `{status: "processing"}` | `{errorId: 0, status: "ready", solution: {token}}` | `{errorId: 1, errorDescription}`
+
+Tasks are solved one at a time (the bridge uses a single curl_cffi session).
+
+## Files
+| File | Role |
 |---|---|
-| `cf_solve.js` | giải 1 lần: api.js → HTML challenge → jsdom chạy orchestrate/VM của CF → token |
-| `cf_dom.js`, `cf_media.js`, `cf_canvas.js`, `cf_jsengine.js`, `cf_surface.js`, `cf_temporal.js`, `cf_worker.js` | môi trường trình duyệt giả (DOM, ảnh, canvas/WebGL, worker…) |
-| `cf_fohook.js`, `tp_lib.js` | thay field fingerprint tĩnh trong payload bằng giá trị Chrome thật (`chrome_profile_b.json`) |
-| `net_bridge.js`, `net_bridge_server.py` | mọi request đi qua curl_cffi (impersonate chrome146) |
-| `solver_api.js` | API cho `roblox_login.py` |
-| `chrome_profile_b.json` | profile Chrome **theo build CF `b`** (ghi offline). CF đổi build → cần ghi lại |
-| `parent_ctx.json`, `../captured_env.json`, các `*.json` còn lại | ngữ cảnh trang Roblox + dữ liệu fingerprint của máy |
+| `cf_solve.js` | one solve: api.js → challenge HTML → jsdom runs Cloudflare's orchestrate/VM → token |
+| `cf_dom.js`, `cf_media.js`, `cf_canvas.js`, `cf_jsengine.js`, `cf_surface.js`, `cf_temporal.js`, `cf_worker.js` | emulated browser environment (DOM, images, canvas/WebGL, workers, …) |
+| `cf_fohook.js`, `tp_lib.js` | replace static fingerprint fields in the payload with real Chrome values from `chrome_profile_b.json` |
+| `net_bridge.js`, `net_bridge_server.py` | every request goes through curl_cffi (impersonate chrome146) |
+| `solver_api.js` | HTTP API used by `roblox_login.py` |
+| `chrome_profile_b.json` | Chrome fingerprint profile **for Cloudflare build `b`** (captured offline) |
+| `parent_ctx.json`, `../captured_env.json`, other `*.json` | parent page context and machine fingerprint data |
 
-## Giới hạn
-- Phụ thuộc build CF hiện tại (`/turnstile/v0/b/...`); build mới cần profile mới.
-- Roblox có acc bị hỏi `captchav2` (HUMAN/PerimeterX) thay vì Turnstile — bản này không giải loại đó.
+## Limitations
+- Tied to the current Cloudflare build (`/turnstile/v0/b/...`); a new build needs a new `chrome_profile_<build>.json`.
